@@ -1,0 +1,22 @@
+valves:
+  n2:
+    pin: 27
+    open: 100
+    closed: 170
+    default: closed
+  release:
+    pin: 14
+    open: 82
+    closed: 160
+    default: closed
+  fuel:
+    pin: 12
+    open: 80
+    closed: 160
+    default: closed
+  ox:
+    pin: ??
+    open: ??
+    closed: ??
+    default: closed
+  
