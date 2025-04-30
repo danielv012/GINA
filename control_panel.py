@@ -2,7 +2,14 @@ import sys
 import socket
 import serial
 import serial.tools.list_ports
-from PyQt6.QtWidgets import QApplication, QWidget, QVBoxLayout, QLineEdit, QPushButton, QTextEdit
+from PyQt6.QtWidgets import (
+    QApplication,
+    QWidget,
+    QVBoxLayout,
+    QLineEdit,
+    QPushButton,
+    QTextEdit,
+)
 from PyQt6.QtNetwork import QTcpSocket, QAbstractSocket
 from PyQt6.QtCore import QIODevice, QThread, pyqtSignal, QObject
 
@@ -45,10 +52,14 @@ class ControlPanel(QWidget):
         self.setLayout(layout)
 
     def connectToHome(self):
-        try: 
-            self.serial_connection = serial.Serial(SERIAL_PORT, SERIAL_BAUDRATE) # Open Serial Port
+        try:
+            self.serial_connection = serial.Serial(
+                SERIAL_PORT, SERIAL_BAUDRATE
+            )  # Open Serial Port
         except serial.SerialException:
-            self.output.append(f"SERIAL EXCEPTION: Connection to serial port {SERIAL_PORT} failed.")
+            self.output.append(
+                f"SERIAL EXCEPTION: Connection to serial port {SERIAL_PORT} failed."
+            )
             return
         # Connection successful.
         self.output.append(f"Serial connection to {SERIAL_PORT} successful.")
@@ -57,7 +68,7 @@ class ControlPanel(QWidget):
         self.serial_monitor_thread = QThread()
         self.serial_monitor = SerialMonitor(self.serial_connection)
         self.serial_monitor.moveToThread(self.serial_monitor_thread)
-        
+
         # Connects a slot (callback function) to the monitor data-received signal.
         self.serial_monitor.data_received.connect(self.displaySerialData)
         # Connects start signal to running function.
@@ -72,21 +83,20 @@ class ControlPanel(QWidget):
             message = "CMD:" + self.input.text() + "\n"
             self.serial_connection.write(message.encode())
             self.input.clear()
-            self.output.append(f"Wrote \"{repr(message)}\" to serial.")
+            self.output.append(f'Wrote "{repr(message)}" to serial.')
         else:
             self.output.append("Not connected.")
 
     def displaySerialData(self, data: str):
         self.output.append("LoRa Home: " + data)
 
-    
     def closeEvent(self, event):
         """
         Ensures serial connection closes before program terminates.
         """
         self.serial_monitor.stop()
         self.serial_monitor_thread.quit()
-        self.serial_monitor_thread.wait() # Waits for the thread to finish executing.
+        self.serial_monitor_thread.wait()  # Waits for the thread to finish executing.
         try:
             if self.serial_connection.is_open:
                 self.serial_connection.close()
@@ -94,10 +104,12 @@ class ControlPanel(QWidget):
             pass
         event.accept()
 
+
 class SerialMonitor(QObject):
     """
     Separate worker thread to constantly monitor serial data and signal GUI thread.
     """
+
     data_received = pyqtSignal(str)
     # finished = pyqtSignal()
 
@@ -111,7 +123,11 @@ class SerialMonitor(QObject):
             # Returns number of bytes in buffer.
             if self.serial_connection.in_waiting:
                 try:
-                    line = self.serial_connection.readline().decode(errors="ignore").strip()
+                    line = (
+                        self.serial_connection.readline()
+                        .decode(errors="ignore")
+                        .strip()
+                    )
                     # Sends signal with data.
                     self.data_received.emit(line)
                 except Exception as e:
@@ -119,6 +135,7 @@ class SerialMonitor(QObject):
 
     def stop(self):
         self._running = False
+
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
