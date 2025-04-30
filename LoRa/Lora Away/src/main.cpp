@@ -78,11 +78,11 @@ void loop() {
           String acknowledgement = "ACK:#" + String(packet_count) + '\n';
           // Transmit acknowledgement 3 times.
           transmitMessage(acknowledgement);
-          delay(200);
+          delay(100);
           transmitMessage(acknowledgement);
-          delay(200);
+          delay(100);
           transmitMessage(acknowledgement);
-          delay(200);
+          delay(100);
         }
       }
     }
