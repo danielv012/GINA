@@ -137,13 +137,12 @@ void loop() {
       pressure_count = 0.0;
 
       JsonDocument msg;
-      msg["type"] = "telemetry";
       msg["psi_fuel"] = round(avg_fuel_pressure * 100.0) / 100.0;
       msg["psi_ox"] = round(avg_ox_pressure * 100.0) / 100.0;
 
       String serialized_msg;
       serializeJson(msg, serialized_msg);
-      serialized_msg = "TLM: " + serialized_msg;
+      serialized_msg = "TLM:" + serialized_msg + "\n";
       Serial2.write(serialized_msg.c_str(), serialized_msg.length());
     }
   }
