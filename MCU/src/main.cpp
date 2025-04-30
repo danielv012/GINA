@@ -66,6 +66,8 @@ void check_for_connections();
 
 void setup() {
   Serial.begin(115200); // For printing.
+  // Using GPIO 5 for RXD, 18 for TXD.
+  Serial2.begin(115200, SERIAL_8N1, 5, 18);
   
   WiFi.mode(WIFI_AP);
   WiFi.softAP(ssid, password);
@@ -138,10 +140,18 @@ void loop()
       ox_pressure_sum = 0.0;
       pressure_count = 0.0;
 
-      String fuel_pressureStr = "Fuel Pressure (PSIg): " + String(avg_fuel_pressure, 2);
-      String ox_pressureStr = "Oxygen Pressure (PSIg): " + String(avg_ox_pressure, 2);
+      String fuel_pressureStr = "psi_fuel=" + String(avg_fuel_pressure, 2);
+      String ox_pressureStr = "psi_ox=" + String(avg_ox_pressure, 2);
       String combined_pressureStr = fuel_pressureStr + "\n" + ox_pressureStr;
       RemoteClient.write(combined_pressureStr.c_str());
+
+      String fuel_tlm_string = "TLM:" + fuel_pressureStr + "\n";
+      String ox_tlm_string = "TLM:" + ox_pressureStr + "\n";
+
+      Serial2.write(fuel_tlm_string.c_str());
+      Serial2.write(ox_tlm_string.c_str());
+
+      
       // Serial.println(combined_pressureStr);
     }
   }
@@ -149,6 +159,7 @@ void loop()
   if (load_cell.is_ready())
   {
     long reading = load_cell.read();
+    // TODO: Convert
     // Serial.print("Raw reading: ");
     // Serial.println(reading);
   } else {
@@ -241,6 +252,7 @@ void log(const LogType log_type, const String message)
   if (RemoteClient.connected())
   {
     RemoteClient.write(text.c_str(), text.length());
+    Serial2.write(text.c_str(), text.length());
   }
   else
   {
