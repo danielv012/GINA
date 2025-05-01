@@ -7,15 +7,6 @@
 #include <WiFi.h>
 #include <cmath>
 
-// Access Point Information.
-char ssid[] = "Diet Coke";
-char password[] = "Diet Coke";
-const uint ServerPort = 23; // Telnet, unencrypted text.
-WiFiServer Server(ServerPort);
-WiFiClient RemoteClient;
-IPAddress Ip(192, 168, 1, 1);
-IPAddress NMask(255, 255, 255, 0);
-
 // Load cell pins.
 #define DT_PIN 18
 #define SCK_PIN 5
@@ -52,7 +43,7 @@ enum LogType { WARNING, TEST, OKAY, ERROR };
 #define OX_PTD_INDEX 2
 
 unsigned long lastDataSendTime = 0;
-const unsigned long dataSendInterval = 3000;
+const unsigned long dataSendInterval = 300;
 double pressure_count = 0;
 double fuel_pressure_sum = 0.0;
 double ox_pressure_sum = 0.0;
@@ -69,13 +60,6 @@ void setup() {
   // Using GPIO 5 for RXD, 18 for TXD.
   Serial2.begin(115200, SERIAL_8N1, 5, 18);
 
-  WiFi.mode(WIFI_AP);
-  WiFi.softAP(ssid, password);
-  WiFi.softAPConfig(Ip, Ip, NMask);
-  Serial.print("Connect to IP address: ");
-  Serial.println(WiFi.softAPIP());
-  Server.begin(); // Starts listening.
-
   analogReadResolution(ADC_RESOLUTION);
 
   tare_fuel_pressure = tarePressure(FUEL_PTD_INDEX);
@@ -89,7 +73,7 @@ void setup() {
 }
 
 void loop() {
-  check_for_connections();
+  // TODO: check_for_connections();
 
   // // Read msg from serial.
   // if (Serial.available())
@@ -240,19 +224,6 @@ void log(const LogType log_type, const String message) {
   } else {
     Serial.println("Client not connected. Logging through serial:");
     Serial.println(text);
-  }
-}
-
-void check_for_connections() {
-  if (Server.hasClient()) {
-    // If already connected, reject new connection. Otherwise accept.
-    if (RemoteClient.connected()) {
-      log(WARNING, "Connection rejected.");
-      Server.available().stop(); // End connection.
-    } else {
-      log(OKAY, "Connection accepted.");
-      RemoteClient = Server.available();
-    }
   }
 }
 
