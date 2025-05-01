@@ -51,8 +51,8 @@ enum LogType { WARNING, TEST, OKAY, ERROR };
 #define FUEL_PTD_INDEX 1
 #define OX_PTD_INDEX 2
 
-unsigned long lastPressureSendTime = 0;
-const unsigned long pressureSendInterval = 3000;
+unsigned long lastDataSendTime = 0;
+const unsigned long dataSendInterval = 3000;
 double pressure_count = 0;
 double fuel_pressure_sum = 0.0;
 double ox_pressure_sum = 0.0;
@@ -62,6 +62,7 @@ void decode_valve_command(String);
 void servo_set(int, int);
 void log(const LogType, const String);
 void check_for_connections();
+void command_function(String);
 
 void setup() {
   Serial.begin(115200); // For printing.
@@ -82,7 +83,8 @@ void setup() {
 
   load_cell.begin(DT_PIN, SCK_PIN);
   // Tare load cell.
-  load_cell.set_scale();
+  load_cell.set_scale(33.1656583);
+  load_cell.set_offset(-163065.0);
   load_cell.tare();
 }
 
@@ -108,52 +110,50 @@ void loop() {
   fuel_pressure_sum += fuel_pressure;
   ox_pressure_sum += ox_pressure;
 
-  if (RemoteClient.connected()) {
-    // If there are messages.
-    if (RemoteClient.available()) {
-      String message = RemoteClient.readStringUntil('\n');
-      message.trim();
+  if (Serial2.available()) {
+    // Read command from serial
+    String message = Serial2.readStringUntil('\n');
+    message.trim();
 
-      // If message starts with 'V'.
-      if (message.startsWith("V")) {
-        decode_valve_command(message);
-      }
+    // If message starts with 'V'.
+    if (message.startsWith("V")) {
+      decode_valve_command(message);
     }
 
-    if (currentTime - lastPressureSendTime >= pressureSendInterval) {
-      lastPressureSendTime = currentTime;
-
-      float avg_fuel_pressure = fuel_pressure_sum / (float)pressure_count;
-      float avg_ox_pressure = ox_pressure_sum / (float)pressure_count;
-
-      // Debugging, uncommented if needed.
-      // Serial.println(String(fuel_pressure_sum));
-      // Serial.println(String(ox_pressure_sum));
-      // Serial.println(String(pressure_count));
-
-      // Reset telemetry sums.
-      fuel_pressure_sum = 0.0;
-      ox_pressure_sum = 0.0;
-      pressure_count = 0.0;
-
-      JsonDocument msg;
-      msg["psi_fuel"] = round(avg_fuel_pressure * 100.0) / 100.0;
-      msg["psi_ox"] = round(avg_ox_pressure * 100.0) / 100.0;
-
-      String serialized_msg;
-      serializeJson(msg, serialized_msg);
-      serialized_msg = "TLM:" + serialized_msg + "\n";
-      Serial2.write(serialized_msg.c_str(), serialized_msg.length());
+    if (message.startsWith("CMD:")) {
+      command_function(message);
     }
   }
 
-  if (load_cell.is_ready()) {
-    long reading = load_cell.read();
-    // TODO: Convert
-    // Serial.print("Raw reading: ");
-    // Serial.println(reading);
-  } else {
-    // Serial.println("HX711 not ready");
+  if (currentTime - lastDataSendTime >= dataSendInterval) {
+    lastDataSendTime = currentTime;
+
+    float avg_fuel_pressure = fuel_pressure_sum / (float)pressure_count;
+    float avg_ox_pressure = ox_pressure_sum / (float)pressure_count;
+
+    // Debugging, uncommented if needed.
+    // Serial.println(String(fuel_pressure_sum));
+    // Serial.println(String(ox_pressure_sum));
+    // Serial.println(String(pressure_count));
+
+    // Reset telemetry sums.
+    fuel_pressure_sum = 0.0;
+    ox_pressure_sum = 0.0;
+    pressure_count = 0.0;
+
+    JsonDocument msg;
+    msg["psi_fuel"] = round(avg_fuel_pressure * 100.0) / 100.0;
+    msg["psi_ox"] = round(avg_ox_pressure * 100.0) / 100.0;
+
+    if (load_cell.is_ready()) {
+      long reading = load_cell.get_units(10);
+      msg["load"] = reading;
+    }
+
+    String serialized_msg;
+    serializeJson(msg, serialized_msg);
+    serialized_msg = "TLM:" + serialized_msg + "\n";
+    Serial2.write(serialized_msg.c_str(), serialized_msg.length());
   }
 }
 
@@ -254,4 +254,8 @@ void check_for_connections() {
       RemoteClient = Server.available();
     }
   }
+}
+
+void command_function(String command) {
+  // ignition_sequence();
 }
