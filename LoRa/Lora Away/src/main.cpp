@@ -15,7 +15,7 @@ const unsigned long ping_timer = 3000; // Ping timer (how long to wait before cl
 void setup() {
   heltec_setup(); // Brings up serial at 115200 bps and powers on display.
 
-  // Wired Serial setup.
+  // Wired Serial setup. RX: 19. TX: 20.
   Serial2.begin(115200, SERIAL_8N1, 19, 20);
 
   // Initialize Radio (SX1262) with default settings.

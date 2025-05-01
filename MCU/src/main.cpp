@@ -24,6 +24,9 @@ HX711 load_cell;
 
 static const int NUM_VALVES = 4;
 
+// Igniter relay pin.
+#define RELAY_PIN 22
+
 // Servo pins.
 #define VALVE_N2_PIN 12
 #define VALVE_RELEASE_PIN 27
