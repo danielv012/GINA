@@ -78,11 +78,11 @@ void loop() {
           String acknowledgement = "ACK:#" + String(packet_count) + '\n';
           // Transmit acknowledgement 3 times.
           transmitMessage(acknowledgement);
-          delay(200);
+          delay(100);
           transmitMessage(acknowledgement);
-          delay(200);
+          delay(100);
           transmitMessage(acknowledgement);
-          delay(200);
+          delay(100);
         }
       }
     }
@@ -103,19 +103,10 @@ void loop() {
   }
 
   // Transmit TLM message
-  // TLM:psi_fuel=350
-  // TLM:load=500
   while (Serial2.available())
   {
     String message = Serial2.readStringUntil('\n');
-    if (message.startsWith("TLM:"))
-    {
-      transmitMessage(message);
-    }
-    else
-    {
-      Serial.println(message);
-    }
+    transmitMessage(message);
   }
 
   // TODO: Probably better to stack messages and then transmit in one packet?
