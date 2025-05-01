@@ -29,13 +29,17 @@ Servo valve_fuel;
 Servo valve_ox;
 
 const int open_valve_n2 = 95;
-const int close_valve_n2 = 155;
+const int close_valve_n2 = 150;
+const int neutral_valve_n2 = 120;
 const int open_valve_release = 82;
 const int close_valve_release = 172;
+const int neutral_valve_release = 130;
 const int open_valve_fuel = 85;
 const int close_valve_fuel = 170;
+const int neutral_valve_fuel = 130;
 const int open_valve_ox = 73;
-const int close_valve_ox = 160;
+const int close_valve_ox = 150;
+const int neutral_valve_ox = 110;
 
 // Array of servo pointers.
 Servo *valves[NUM_VALVES] = {&valve_n2, &valve_release, &valve_fuel, &valve_ox};
@@ -47,6 +51,11 @@ enum LogType { WARNING, TEST, OKAY, ERROR };
 
 unsigned long lastDataSendTime = 0;
 const unsigned long dataSendInterval = 300;
+
+const unsigned long fire_length = 5000;
+unsigned long ignition_time = 0;
+bool firing = false;
+
 double pressure_count = 0;
 double fuel_pressure_sum = 0.0;
 double ox_pressure_sum = 0.0;
@@ -60,12 +69,15 @@ void command_function(String);
 void close_all_valves();
 void open_all_valves();
 void ignition_sequence();
+int get_servo_angle(int valve_index, String angle);
+void ignition_start();
+void ignition_stop();
 
 
 void setup() {
   Serial.begin(115200); // For printing.
   // Using GPIO 5 for RXD, 18 for TXD.
-  Serial2.begin(115200, SERIAL_8N1, 5, 18);
+  Serial2.begin(115200, SERIAL_8N1, 16, 17);
 
   analogReadResolution(ADC_RESOLUTION);
 
@@ -107,6 +119,7 @@ void loop() {
     // Read command from serial
     String message = Serial2.readStringUntil('\n');
     message.trim();
+    Serial.println(message);
 
     if (message.startsWith("CMD:")) {
       command_function(message);
@@ -141,7 +154,24 @@ void loop() {
     String serialized_msg;
     serializeJson(msg, serialized_msg);
     serialized_msg = "TLM:" + serialized_msg + "\n";
-    Serial2.write(serialized_msg.c_str(), serialized_msg.length());
+    // Serial2.write(serialized_msg.c_str(), serialized_msg.length());
+    Serial2.print(serialized_msg);
+    Serial.print(serialized_msg);
+
+    Serial.print("Fuel tare: " + String(tare_fuel_pressure));
+    Serial.print("Ox tare: " + String(tare_ox_pressure));
+
+  }
+
+  // IGNITION.
+  if (firing)
+  {
+    currentTime = millis();
+    // If we have been firing for 5+ seconds, stop.
+    if (currentTime - ignition_time >= fire_length)
+    {
+      ignition_stop();
+    }
   }
 }
 
@@ -153,8 +183,9 @@ void loop() {
  */
 void decode_valve_command(String message) {
   int valve_index = message.substring(1, 2).toInt();
+  // Serial.println("Decoding command:" + message);
   if (valve_index < 1 || valve_index > NUM_VALVES) {
-    log(ERROR, "Invalid valve number.");
+    log(ERROR, "Invalid valve number. Message: " + message + ". Num: " + valve_index);
   } else {
     int colon_pos = message.indexOf(':');
     // If format is incorrect, or no angle follows.
@@ -162,13 +193,16 @@ void decode_valve_command(String message) {
       log(ERROR,
           "\"" + message + "\" Invalid format. Use V#:angle (e.g., V2:135)");
     } else {
-      int angle = message.substring(colon_pos + 1).toInt();
-      servo_set(valve_index, angle);
+      // V1:OPEN
+      String angle_string = message.substring(colon_pos + 1);
+      angle_string.trim();
+      int servo_angle = get_servo_angle(valve_index, angle_string);
+      servo_set(valve_index, servo_angle);
     }
   }
 }
 
-void init_servo(int index) {
+void init_servo(int index) { // TODO: Maybe init all servos on start?
   switch (index) {
   case 1:
     valve_n2.attach(VALVE_N2_PIN);
@@ -196,9 +230,7 @@ void servo_set(int index, int angle) {
   // After a delay, attach so not draining power.
   log(OKAY,
       "Writing angle " + String(angle) + " to servo " + String(index) + ".");
-  delay(500);
-  target_servo->detach();
-  log(OKAY, "Detached servo " + index);
+  
 }
 
 void log(const LogType log_type, const String message) {
@@ -231,7 +263,7 @@ void command_function(String command) {
   command = command.substring(4);
   if (command.startsWith("IGN"))
   {
-    ignition_sequence();
+    ignition_start();
   }
   else if (command.startsWith("OPEN_ALL"))
   {
@@ -242,7 +274,8 @@ void command_function(String command) {
     close_all_valves();
   }
   // If message starts with 'V'.
-  else if (command.startsWith("V")) {
+  else if (command.startsWith("V")) 
+  {
     decode_valve_command(command);
   }
 }
@@ -251,23 +284,65 @@ void command_function(String command) {
 
 void close_all_valves()
 {
-  decode_valve_command("V1:" + close_valve_n2);
-  decode_valve_command("V2:" + close_valve_release);
-  decode_valve_command("V3:" + close_valve_fuel);
-  decode_valve_command("V4:" + close_valve_ox);
+  decode_valve_command("V1:CLOSE");
+  decode_valve_command("V2:CLOSE");
+  decode_valve_command("V3:CLOSE");
+  decode_valve_command("V4:CLOSE");
 }
 
 void open_all_valves()
 {
-  decode_valve_command("V1:" + open_valve_n2);
-  decode_valve_command("V2:" + open_valve_release);
-  decode_valve_command("V3:" + open_valve_fuel);
-  decode_valve_command("V4:" + open_valve_ox);
+  decode_valve_command("V1:OPEN");
+  decode_valve_command("V2:OPEN");
+  decode_valve_command("V3:OPEN");
+  decode_valve_command("V4:OPEN");
 }
 
-void ignition_sequence()
+// IGNITION.
+void ignition_start()
 {
   digitalWrite(RELAY_PIN, HIGH);
-  delay(5000);
+  delay(500);
+  decode_valve_command("V3:OPEN");
+  decode_valve_command("V4:OPEN");
+  ignition_time = millis();
+  firing = true;
+}
+
+void ignition_stop()
+{
+  firing = false;
+  decode_valve_command("V3:CLOSE");
+  decode_valve_command("V4:CLOSE");
   digitalWrite(RELAY_PIN, LOW);
+}
+
+int get_servo_angle(int valve_index, String angle)
+{
+  switch (valve_index)
+  {
+    case 1: // Nitrogen
+      if (angle.equals("OPEN")) return open_valve_n2;
+      else if (angle.equals("CLOSE")) return close_valve_n2;
+      else return neutral_valve_n2;
+      break;
+    case 2: // Release
+      if (angle.equals("OPEN")) return open_valve_release;
+      else if (angle.equals("CLOSE")) return close_valve_release;
+      else return neutral_valve_release;
+      break;
+    case 3: // Fuel
+      if (angle.equals("OPEN")) return open_valve_fuel;
+      else if (angle.equals("CLOSE")) return close_valve_fuel;
+      else return neutral_valve_fuel;
+      break;
+    case 4: // Oxygen
+      if (angle.equals("OPEN")) return open_valve_ox;
+      else if (angle.equals("CLOSE")) return close_valve_ox;
+      else return neutral_valve_ox;
+      break;
+    default:
+      log(WARNING, "Wrong servo index provided for getting servo angle.");
+      return -999;
+  }
 }

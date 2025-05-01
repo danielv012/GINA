@@ -67,14 +67,11 @@ void loop() {
         if (message.startsWith("CMD:"))
         {
           int id_index = message.indexOf('#');
-          Serial.println("Message: " + message);
-          Serial.println("Message subs: " + message.substring(id_index));
           int packet_count = (message.substring(id_index + 1)).toInt();
           String command = message.substring(4, id_index);
-          Serial.println("PACKET_COUNT: " + packet_count);
 
           // Crops out #.
-          String serial_command = command.substring(0, id_index);
+          String serial_command = message.substring(0, id_index);
           sendCommand(serial_command);
 
           String acknowledgement = "ACK:#" + String(packet_count) + '\n';
@@ -91,24 +88,25 @@ void loop() {
   }
   else
   {
-    // some other error occurred
-    Serial.print(F("failed to receive, code "));
-    Serial.println(state);
+    // // some other error occurred
+    // Serial.print(F("failed to receive, code "));
+    // Serial.println(state);
   }
   
 
   // If nothing has been heard for 3+ seconds, close valves.
-  if (now - last_reception_time >= ping_timer)
-  {
-    String command = "CLOSE_VALVES";
-    sendCommand(command);
-  }
+  // if (now - last_reception_time >= ping_timer)
+  // {
+  //   String command = "CLOSE_VALVES";
+  //   sendCommand(command);
+  // }
 
   // Transmit TLM message
   while (Serial2.available())
   {
     String message = Serial2.readStringUntil('\n');
-    transmitMessage(message);
+    // Serial.println("TLM Received: " + message);
+    // transmitMessage(message); TODO: Find a way to transmit everything.
   }
 
   // TODO: Probably better to stack messages and then transmit in one packet?
@@ -117,6 +115,7 @@ void loop() {
 void sendCommand(String command)
 {
   Serial2.println(command);
+  Serial.println("Wrote " + command + " to serial2.");
 }
 
 void transmitMessage(String message)
