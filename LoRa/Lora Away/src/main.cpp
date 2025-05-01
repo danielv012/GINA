@@ -72,8 +72,10 @@ void loop() {
           int packet_count = (message.substring(id_index + 1)).toInt();
           String command = message.substring(4, id_index);
           Serial.println("PACKET_COUNT: " + packet_count);
-          
-          sendCommand(command);
+
+          // Crops out #.
+          String serial_command = command.substring(0, id_index);
+          sendCommand(serial_command);
 
           String acknowledgement = "ACK:#" + String(packet_count) + '\n';
           // Transmit acknowledgement 3 times.

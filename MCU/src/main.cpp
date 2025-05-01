@@ -57,6 +57,10 @@ void servo_set(int, int);
 void log(const LogType, const String);
 void check_for_connections();
 void command_function(String);
+void close_all_valves();
+void open_all_valves();
+void ignition_sequence();
+
 
 void setup() {
   Serial.begin(115200); // For printing.
@@ -73,6 +77,8 @@ void setup() {
   load_cell.set_scale(33.1656583);
   load_cell.set_offset(-163065.0);
   load_cell.tare();
+
+  pinMode(RELAY_PIN, OUTPUT);
 }
 
 void loop() {
@@ -101,11 +107,6 @@ void loop() {
     // Read command from serial
     String message = Serial2.readStringUntil('\n');
     message.trim();
-
-    // If message starts with 'V'.
-    if (message.startsWith("V")) {
-      decode_valve_command(message);
-    }
 
     if (message.startsWith("CMD:")) {
       command_function(message);
@@ -221,15 +222,52 @@ void log(const LogType log_type, const String message) {
   }
   text += message;
 
-  if (RemoteClient.connected()) {
-    RemoteClient.write(text.c_str(), text.length());
-    Serial2.write(text.c_str(), text.length());
-  } else {
-    Serial.println("Client not connected. Logging through serial:");
-    Serial.println(text);
-  }
+  Serial.println(text);
+  Serial2.println(text);
 }
 
 void command_function(String command) {
-  // ignition_sequence();
+  // Command string is CMD:V1_30 or CMD:IGN
+  command = command.substring(4);
+  if (command.startsWith("IGN"))
+  {
+    ignition_sequence();
+  }
+  else if (command.startsWith("OPEN_ALL"))
+  {
+    open_all_valves();
+  }
+  else if (command.startsWith("CLOSE_ALL"))
+  {
+    close_all_valves();
+  }
+  // If message starts with 'V'.
+  else if (command.startsWith("V")) {
+    decode_valve_command(command);
+  }
+}
+
+
+
+void close_all_valves()
+{
+  decode_valve_command("V1:" + close_valve_n2);
+  decode_valve_command("V2:" + close_valve_release);
+  decode_valve_command("V3:" + close_valve_fuel);
+  decode_valve_command("V4:" + close_valve_ox);
+}
+
+void open_all_valves()
+{
+  decode_valve_command("V1:" + open_valve_n2);
+  decode_valve_command("V2:" + open_valve_release);
+  decode_valve_command("V3:" + open_valve_fuel);
+  decode_valve_command("V4:" + open_valve_ox);
+}
+
+void ignition_sequence()
+{
+  digitalWrite(RELAY_PIN, HIGH);
+  delay(5000);
+  digitalWrite(RELAY_PIN, LOW);
 }

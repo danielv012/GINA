@@ -139,6 +139,10 @@ void loop() {
         {
           Serial.println(message);
         }
+        else
+        {
+          Serial.println(message);
+        }
       }
     }
   }
