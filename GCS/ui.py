@@ -6,12 +6,42 @@ from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
     QPushButton,
     QTextEdit,
+    QLineEdit,
     QLabel,
-    QFormLayout,
     QWidget,
+    QVBoxLayout,
     QHBoxLayout,
+    QFrame,
 )
 from pyqtgraph import PlotWidget
+
+
+class QHLine(QFrame):
+    def __init__(self):
+        super(QHLine, self).__init__()
+        self.setFrameShape(QFrame.Shape.HLine)
+        self.setFrameShadow(QFrame.Shadow.Sunken)
+
+
+class HeartbeatLabel(QLineEdit):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setText("Last Heartbeat: None recieved")
+        self.setStyleSheet(
+            """
+            QLineEdit {
+                background-color: black;
+                color: white;
+                font-weight: bold;
+                border: 1px solid #373838;
+                text-align: center;
+            }
+            """
+        )
+        self.setReadOnly(True)
+
+    def update_heartbeat(self, hbt: str) -> None:
+        self.setText(f"Last Heartbeat: {hbt} ago")
 
 
 class ValveState(Enum):
@@ -24,14 +54,14 @@ class ValveSwitchButton(QPushButton):
     def __init__(self, parent=None, text: str = "", callback=None):
         super().__init__(parent)
         self.setText(text)
-        self.setFixedSize(20, 20)
+        self.setFixedSize(40, 40)
         self.setStyleSheet(
             """
             QPushButton {
                 background-color: #633854;
                 color: white;
                 font-weight: bold;
-                border-radius: 10px;
+                border-radius: 20px;
             }
 
             QPushButton:hover {
@@ -62,25 +92,33 @@ class ValveSwitch(QWidget):
             """
         )
 
-        self.layout_ = QHBoxLayout()
-        self.layout_.addWidget(self.label_)
-        self.layout_.setAlignment(self.label_, Qt.AlignmentFlag.AlignCenter)
-        self.layout_.setSpacing(10)
-        self.layout_.addWidget(
+        self.layout_ = QVBoxLayout()
+        self.layout_.addWidget(self.label_, 0, Qt.AlignmentFlag.AlignCenter)
+
+        self.inner_layout_ = QHBoxLayout()
+        self.inner_layout_.setSpacing(70)
+        # Center the buttons
+        self.inner_layout_.addWidget(
             ValveSwitchButton(
-                self, "O", callback=lambda: self.proxy_callback_(ValveState.OPEN)
+                self,
+                "O",
+                callback=lambda: self.proxy_callback_(ValveState.OPEN),
             )
         )
-        self.layout_.addWidget(
+        self.inner_layout_.addWidget(
             ValveSwitchButton(
                 self, "C", callback=lambda: self.proxy_callback_(ValveState.CLOSED)
             )
         )
-        self.layout_.addWidget(
+        self.inner_layout_.addWidget(
             ValveSwitchButton(
                 self, "N", callback=lambda: self.proxy_callback_(ValveState.NEUTRAL)
             )
         )
+        self.inner_layout_.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.layout_.addLayout(self.inner_layout_)
+        self.layout_.addWidget(QHLine())
+
         self.setLayout(self.layout_)
 
     def proxy_callback_(self, state: ValveState):

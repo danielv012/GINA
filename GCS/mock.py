@@ -12,6 +12,9 @@ if not ser.is_open:
 
 try:
     while True:
+        # Send heartbeat message
+        hbt = random.randint(0, 5)
+        ser.write(f"HBT:{str(hbt)}\n".encode("utf-8"))
         # Generate two random values for psi_fuel and psi_ox
         psi_fuel = random.randint(0, 1000)
         psi_ox = random.randint(0, 1000)

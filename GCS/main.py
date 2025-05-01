@@ -11,6 +11,7 @@ from PyQt6.QtWidgets import (
     QGraphicsDropShadowEffect,
     QSplitter,
     QHBoxLayout,
+    QLabel,
 )
 from PyQt6.QtGui import QColor, QPalette, QFont
 from PyQt6.QtCore import QThread, Qt
@@ -23,6 +24,8 @@ from ui import (
     PressureGraph,
     ThrustGraph,
     ValveSwitch,
+    HeartbeatLabel,
+    QHLine,
 )
 from serial_monitor import SerialMonitor
 from utils import g_to_N
@@ -100,6 +103,33 @@ class ControlPanel(QWidget):
         left_layout.addWidget(self.serial_port_path_input)
         left_layout.addWidget(self.serial_buadrate_input)
         left_layout.addWidget(ConnectButton(self, self.connectToHome))
+
+        self.heartbeat_label_ = HeartbeatLabel(self)
+        left_layout.addWidget(self.heartbeat_label_)
+
+        important_btns_layout = QHBoxLayout()
+        important_btns_layout.setContentsMargins(0, 30, 0, 0)
+        important_btns_layout.addWidget(
+            IgnitionButton(self, callback=lambda: self.transmitMessage(COMMANDS["IGN"]))
+        )
+        important_btns_layout.addWidget(
+            ImportantValveButton(
+                self,
+                "Close All",
+                callback=lambda: self.transmitMessage(COMMANDS["CLOSE_ALL"]),
+            )
+        )
+        important_btns_layout.addWidget(
+            ImportantValveButton(
+                self,
+                "Open All",
+                callback=lambda: self.transmitMessage(COMMANDS["OPEN_ALL"]),
+            )
+        )
+
+        left_layout.addLayout(important_btns_layout)
+        left_layout.addWidget(QHLine())
+
         left_layout.addWidget(
             ValveSwitch(
                 "Fuel Pressurization Valve",
@@ -127,42 +157,21 @@ class ControlPanel(QWidget):
             )
         )
 
-        important_btns_layout = QHBoxLayout()
-        important_btns_layout.addWidget(
-            IgnitionButton(self, callback=lambda: self.transmitMessage(COMMANDS["IGN"]))
-        )
-        important_btns_layout.addWidget(
-            ImportantValveButton(
-                self,
-                "Close All",
-                callback=lambda: self.transmitMessage(COMMANDS["CLOSE_ALL"]),
-            )
-        )
-        important_btns_layout.addWidget(
-            ImportantValveButton(
-                self,
-                "Open All",
-                callback=lambda: self.transmitMessage(COMMANDS["OPEN_ALL"]),
-            )
-        )
-
-        left_layout.addLayout(important_btns_layout)
-
-        left_layout.addWidget(
-            ValveSwitch(
-                "OX Release Valve",
-                callback=lambda state: (
-                    self.serial_terminal.append(f"OX Release Valve : {state.value}"),
-                    self.transmitMessage(COMMANDS["OX_RELEASE:" + state.value]),
-                ),
-            )
-        )
         left_layout.addWidget(
             ValveSwitch(
                 "Fuel Release Valve",
                 callback=lambda state: (
                     self.serial_terminal.append(f"Fuel Release Valve : {state.value}"),
                     self.transmitMessage(COMMANDS["FUEL_RELEASE:" + state.value]),
+                ),
+            )
+        )
+        left_layout.addWidget(
+            ValveSwitch(
+                "OX Release Valve",
+                callback=lambda state: (
+                    self.serial_terminal.append(f"OX Release Valve : {state.value}"),
+                    self.transmitMessage(COMMANDS["OX_RELEASE:" + state.value]),
                 ),
             )
         )
@@ -279,6 +288,8 @@ class ControlPanel(QWidget):
             if "load" in msg:
                 self.thrust_graph.update(g_to_N(msg["load"]))
             self.serial_terminal.append("LoRa Home: " + data)
+        elif data.startswith("HBT:"):
+            self.heartbeat_label_.update_heartbeat(f"{data[4:]}s")
         else:
             self.serial_terminal.append("Debug: " + data)
 
