@@ -65,7 +65,7 @@ class ControlPanel(QWidget):
         super().__init__()
         self.serial_connection = serial.Serial()
         self.serial_monitor_thread = None
-        self.serial_port_path = "/dev/pts/6"
+        self.serial_port_path = "/dev/tty.usbserial-0001"
         self.serial_baudrate = "115200"
 
         self.initUI()
@@ -282,11 +282,10 @@ class ControlPanel(QWidget):
             self.serial_terminal.append("Not connected.")
 
     def displaySerialData(self, data: str):
-        if data.startswith("TLM:"):
-            msg = json.loads(data[4:])
-            self.pressure_graph.update(msg["psi_fuel"], msg["psi_ox"])
-            if "load" in msg:
-                self.thrust_graph.update(g_to_N(msg["load"]))
+        if data.startswith("T"):
+            psi_fuel, psi_ox, load = [d.strip() for d in data[1:].split(",")]
+            self.pressure_graph.update(int(psi_fuel), int(psi_ox))
+            self.thrust_graph.update(g_to_N(int(load)))
             self.serial_terminal.append("LoRa Home: " + data)
         elif data.startswith("HBT:"):
             self.heartbeat_label_.update_heartbeat(f"{data[4:]}s")

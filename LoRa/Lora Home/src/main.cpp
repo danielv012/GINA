@@ -19,7 +19,6 @@
 // https://github.com/HelTecAutomation/Heltec_ESP32
 
 // Function Headers
-void transmit(String);
 void processPacket(String packet);
 String formatCommand(String command);
 void transmit(String packet);
@@ -30,8 +29,8 @@ void transmit(String packet);
 // NRST pin:  3
 // BUSY pin:  9
 
-constexpr const char *PACKET_ID = "DIET_COKE=";
-constexpr const int PACKET_ID_LENGTH = 10;
+constexpr const char *PACKET_ID = "DC=";
+constexpr const int PACKET_ID_LENGTH = 3;
 
 int packet_count = 0;
 bool transmitting = false;
@@ -42,12 +41,30 @@ unsigned long last_transmission_time = 0;        // Last transmission time.
 const unsigned long transmission_interval = 500; // Milliseconds.
 
 // Ping interval (automatic valve closure).
-const unsigned long ping_interval = 1000; // Milliseconds.
+const unsigned long ping_interval = 4000; // Milliseconds.
 
 // Reception.
 unsigned long last_reception_time = 0;         // Last reception time.
 unsigned long last_heartbeat_message_time = 0; // Last heartbeat message.
-const unsigned long heartbeat_interval = 1000; // Milliseconds.
+const unsigned long heartbeat_interval = 5000; // Milliseconds.
+
+// Radio interrupt flag.
+static volatile bool received_flag;
+bool transmitting_flag = false;
+
+/**
+ * @brief Stupid function. available() should work.
+ *
+ */
+void set_flag(void)
+{
+    if (transmitting_flag)
+    {
+        transmitting_flag = false;
+        return;
+    }
+    received_flag = true;
+}
 
 void setup()
 {
@@ -75,6 +92,8 @@ void setup()
         }
     }
 
+    radio.setPacketReceivedAction(set_flag);
+
     // Non-blocking. Will automatically fill packet if received. Overwrites
     // buffer each packet.
     radio.startReceive();
@@ -87,8 +106,9 @@ void loop()
     unsigned long now = millis();
 
     // If there's a packet in the buffer.
-    if (radio.available())
+    if (received_flag)
     {
+        received_flag = false;
         String data;
         int state = radio.readData(data);
         if (state == RADIOLIB_ERR_NONE)
@@ -191,7 +211,7 @@ void processPacket(String packet)
             Serial.println(message);
         }
     }
-    else if (message.startsWith("TLM:"))
+    else if (message.startsWith("T"))
     {
         Serial.println(message);
     }
@@ -220,11 +240,13 @@ String formatCommand(String command)
  */
 void transmit(String packet)
 {
+    transmitting_flag = true;
+
     // Blocking, so control loop will wait for entire packet.
     int state = radio.transmit(packet);
     if (state == RADIOLIB_ERR_NONE)
     {
-        Serial.println("Transmitted " + packet);
+        Serial.println("ransmitted " + packet);
     }
     else if (state == RADIOLIB_ERR_PACKET_TOO_LONG)
     {
@@ -237,6 +259,7 @@ void transmit(String packet)
         Serial.print(F("Failed transmission, code "));
         Serial.println(state);
     }
+
     // Begin receiving again. NOTE: DO NOT REMOVE.
     radio.startReceive();
 }

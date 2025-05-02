@@ -7,6 +7,14 @@
 #include <WiFi.h>
 #include <cmath>
 
+enum LogType
+{
+    WARNING,
+    TEST,
+    OKAY,
+    ERROR
+};
+
 // Function Headers
 void init_servo();
 void decode_valve_command(String);
@@ -66,22 +74,15 @@ const int neutral_valve_ox = 110;
 Servo *valves[NUM_VALVES] = {&valve_n2, &valve_release, &valve_fuel, &valve_ox};
 ////////////////////////////////////
 
-enum LogType
-{
-    WARNING,
-    TEST,
-    OKAY,
-    ERROR
-};
-
 #define FUEL_PTD_INDEX 1
 #define OX_PTD_INDEX 2
 double pressure_count = 0;
 double fuel_pressure_sum = 0.0;
 double ox_pressure_sum = 0.0;
+int last_load_reading = 0;
 
 unsigned long lastDataSendTime = 0;
-const unsigned long dataSendInterval = 300;
+const unsigned long dataSendInterval = 666;
 
 const unsigned long fire_length = 5000;
 unsigned long ignition_time = 0;
@@ -135,6 +136,8 @@ void loop()
     fuel_pressure_sum += fuel_pressure;
     ox_pressure_sum += ox_pressure;
 
+    currentTime = millis();
+
     // Sending telemetry every 300ms. Calculates averages.
     if (currentTime - lastDataSendTime >= dataSendInterval)
     {
@@ -154,26 +157,23 @@ void loop()
         ox_pressure_sum = 0.0;
         pressure_count = 0.0;
 
-        JsonDocument msg;
-        msg["psi_fuel"] = round(avg_fuel_pressure * 100.0) / 100.0;
-        msg["psi_ox"] = round(avg_ox_pressure * 100.0) / 100.0;
+        String msg_psi_fuel = String(int(avg_fuel_pressure));
+        String msg_psi_ox = String(int(avg_ox_pressure));
 
         if (load_cell.is_ready())
         {
-            long reading = load_cell.get_units(10);
-            msg["load"] = reading;
+            int reading = int(load_cell.get_units(10));
+            last_load_reading = reading;
         }
 
         // Write via Serial2 to LoRa away.
-        String serialized_msg;
-        serializeJson(msg, serialized_msg);
-        serialized_msg = "TLM:" + serialized_msg + "\n";
-        Serial2.print(serialized_msg);
+        String msg = "T" + msg_psi_fuel + ',' + msg_psi_ox + ',' + String(last_load_reading);
+        Serial2.println(msg);
 
         // DEBUG:
-        Serial.print("Wrote Serial2: " + serialized_msg);
+        // Serial.print("Wrote Serial2: " + serialized_msg);
 
-        lastDataSendTime = currentTime;
+        lastDataSendTime = millis();
     }
 
     // IGNITION.

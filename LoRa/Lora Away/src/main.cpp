@@ -6,12 +6,32 @@ void sendCommand(String);
 void transmit(String);
 void processPacket(String packet);
 
-constexpr const char *PACKET_ID = "DIET_COKE=";
-constexpr const int PACKET_ID_LENGTH = 10;
+constexpr const char *PACKET_ID = "DC=";
+constexpr const int PACKET_ID_LENGTH = 3;
 
 // Reception
 unsigned long last_reception_time = 0; // Last reception time.
-const unsigned long ping_timer = 3000; // Ping timer (how long to wait before closing valves)
+const unsigned long ping_timer = 8000; // Ping timer (how long to wait before closing valves)
+
+bool idle = false;
+
+// Radio interrupt flag.
+static volatile bool received_flag;
+bool transmitting = false;
+
+/**
+ * @brief Stupid function. available() should work.
+ *
+ */
+void set_flag(void)
+{
+    if (transmitting)
+    {
+        transmitting = false;
+        return;
+    }
+    received_flag = true;
+}
 
 void setup()
 {
@@ -42,6 +62,8 @@ void setup()
         }
     }
 
+    radio.setPacketReceivedAction(set_flag);
+
     // Non-blocking. Will automatically fill packet if received. Overwrites
     // buffer each packet.
     radio.startReceive();
@@ -54,10 +76,13 @@ void loop()
     unsigned long now = millis();
 
     // If there's a packet in the buffer.
-    if (radio.available())
+    if (received_flag)
     {
+        received_flag = false;
+        Serial.println("Radio is available.");
         String data;
         int state = radio.readData(data);
+        Serial.println("Data: " + data);
         if (state == RADIOLIB_ERR_NONE)
             processPacket(data);
         else
@@ -73,7 +98,7 @@ void loop()
         String message = Serial2.readStringUntil('\n');
 
         // If it's telemetry, transmit.
-        if (message.startsWith("TLM:"))
+        if (message.startsWith("T"))
         {
             Serial.println("Telemetry received: " + message);
             transmit(message);
@@ -84,8 +109,12 @@ void loop()
     // If nothing has been heard for 3+ seconds, close valves.
     if (now - last_reception_time >= ping_timer)
     {
-        String command = "CLOSE_VALVES";
-        sendCommand(command);
+        String command = "CMD:CLOSE_VALVES";
+        if (!idle)
+        {
+            sendCommand(command);
+            idle = true;
+        }
     }
 }
 
@@ -120,8 +149,9 @@ void processPacket(String packet)
         int id_index = message.indexOf('#');
         int packet_count = (message.substring(id_index + 1)).toInt();
         // Crops header and #. CMD:V1:OPEN_ALL#5 -> V1:OPEN_ALL
-        String command = message.substring(4, id_index);
+        String command = message.substring(0, id_index);
         sendCommand(command);
+        idle = false;
 
         String acknowledgement = "ACK:#" + String(packet_count) + '\n';
 
@@ -156,6 +186,8 @@ void transmit(String message)
 {
     String packet = PACKET_ID + message + '\n';
 
+    transmitting = true;
+
     int state = radio.transmit(packet);
     if (state == RADIOLIB_ERR_NONE)
     {
@@ -172,6 +204,7 @@ void transmit(String message)
         Serial.print(F("Failed transmission, code "));
         Serial.println(state);
     }
+
     // Begin receiving again. NOTE: DO NOT REMOVE.
     radio.startReceive();
 }
