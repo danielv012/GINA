@@ -260,7 +260,9 @@ void decodeCommand(String command)
 
     if (command.startsWith("IGN"))
     {
-        ignition_start();
+        // Will not start ignition again on a duplicate packet.
+        if (!firing)
+            ignition_start();
     }
     else if (command.startsWith("OPEN_ALL"))
     {
@@ -306,10 +308,10 @@ void ignition_start()
 
 void ignition_stop()
 {
-    firing = false;
     decode_valve_command("V3:CLOSE");
     decode_valve_command("V4:CLOSE");
     digitalWrite(RELAY_PIN, LOW);
+    firing = false;
 }
 /////////////////////////////////////////////
 
