@@ -28,7 +28,6 @@ class Parameters:
         R_t: float  # Throat radius
         Lvp: float  # Vertical point length (0 < Lvp < 1)
         Note: Lvp is the amount of the chamber radius you want the contraction line to take up.
-        contraction_diameter_ratio: float
         contract_angle: float  # Degrees
         nozzle_angle: float  # Degrees
         R_e: float  # Exit radius
@@ -39,7 +38,6 @@ class Parameters:
     R_c: float  # Chamber radius
     R_t: float  # Throat radius
     Lvp: float  #  Vertical point length (0 < Lvp < 1)
-    contraction_diameter_ratio: float
     contract_angle: float  # Degrees
     nozzle_angle: float  # Degrees
     R_e: float  # Exit radius
@@ -53,11 +51,6 @@ class Parameters:
     def __post_init__(self):
         self.R_4 = 1.5 * self.R_t
         self.R_5 = 0.45 * self.R_t
-
-    def apply_wall_thickness(self, thickness: float):
-        self.R_c += thickness
-        self.R_t = self.R_c / self.contraction_diameter_ratio
-        self.__post_init__()
 
     def __str__(self):
         return (
@@ -325,7 +318,6 @@ def main():
         R_t=1.248379473 / 2 * 10,
         R_e=2.301477106 / 2 * 10,
         Lvp=1 / 3,
-        contraction_diameter_ratio=4,
         contract_angle=70,
         nozzle_angle=15,
         L_c=5.836139169 * 10,
