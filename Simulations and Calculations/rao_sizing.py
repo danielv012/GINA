@@ -1,20 +1,47 @@
+"""
+This script generates a STEP file of Rao's nozzle using given parameters.
+Parameters should be in millimeters.
+"""
+
+import numpy as np
+import cadquery as cq
 import math
 from dataclasses import dataclass, field
 
+# Workaround for show_object if not in CQ Editor.
+if "show_object" not in globals():
 
-# Configuration Constants
-WALL_THICKNESS = 0.06889659248  # ~4 mm
+    def show_object(*args, **kwargs):
+        pass
 
 
 @dataclass
 class Parameters:
+    """
+    Parameters for the nozzle geometry.
+
+    Attributes:
+        R_c: float  # Chamber radius
+        R_t: float  # Throat radius
+        Lvp: float  # Vertical point length (0 < Lvp < 1)
+        Note: Lvp is the amount of the chamber radius you want the contraction line to take up.
+        contraction_diameter_ratio: float
+        contract_angle: float  # Degrees
+        nozzle_angle: float  # Degrees
+        R_e: float  # Exit radius
+        L_c: float  # Chamber length. This includes the contraction area (from the start of the chamber to the throat).
+        wall_thickness: float  # Wall thickness of the nozzle
+    """
+
     R_c: float  # Chamber radius
     R_t: float  # Throat radius
-    Lvp: float  # Virtual point length
-    contraction_ratio: float
+    Lvp: float  #  Vertical point length (0 < Lvp < 1)
+    contraction_diameter_ratio: float
     contract_angle: float  # Degrees
     nozzle_angle: float  # Degrees
     R_e: float  # Exit radius
+    L_c: float  # Chamber length. This includes the contraction area (from the start of the chamber to the throat).
+    wall_thickness: float  # Wall thickness of the nozzle
 
     # Derived attributes
     R_4: float = field(init=False)
@@ -26,7 +53,7 @@ class Parameters:
 
     def apply_wall_thickness(self, thickness: float):
         self.R_c += thickness
-        self.R_t = self.R_c / math.sqrt(self.contraction_ratio)
+        self.R_t = self.R_c / self.contraction_diameter_ratio
         self.__post_init__()
 
     def __str__(self):
@@ -39,6 +66,14 @@ class Parameters:
 
 @dataclass
 class Sizing:
+    """
+    Sizing parameters for the nozzle geometry.
+    """
+
+    L_c: float
+    R_t: float
+    R_c: float
+    R_e: float
     t_4: float
     z_4: float
     r_4: float
@@ -48,17 +83,21 @@ class Sizing:
     z_2: float
     R_2: float
     r_2: float
+    R_4: float
+    R_5: float
     t_5: float
-    r_6: float
-    z_6: float
+    r_5: float
+    z_5: float
     L_n: float
+    nozzle_angle: float
+    wall_thickness: float
 
     def __str__(self):
         return (
             f"t_4: {math.degrees(self.t_4):.2f}°\nz_4: {self.z_4:.4f}\nr_4: {self.r_4:.4f}\n"
             f"r_3: {self.r_3:.4f}\nz_3: {self.z_3:.4f}\nt_3: {math.degrees(self.t_3):.2f}°\n"
             f"z_2: {self.z_2:.4f}\nR_2: {self.R_2:.4f}\nr_2: {self.r_2:.4f}\n"
-            f"t_5: {math.degrees(self.t_5):.2f}°\nr_6: {self.r_6:.4f}\nz_6: {self.z_6:.4f}\n"
+            f"t_5: {math.degrees(self.t_5):.2f}°\nr_6: {self.r_5:.4f}\nz_6: {self.z_5:.4f}\n"
             f"L_n: {self.L_n:.4f}"
         )
 
@@ -94,44 +133,213 @@ def calculate_sizing(params: Parameters) -> Sizing:
     # t_5: tangent angle at point 5, start of diverging nozzle arc
     t_5 = math.atan(-1 / math.tan(math.radians(params.nozzle_angle)))
     # r_6: radial position of point 6, end of expansion arc
-    r_6 = params.R_5 * math.sin(t_5) + params.R_t + params.R_5
+    r_5 = params.R_5 * math.sin(t_5) + params.R_t + params.R_5
     # z_6: axial position of point 6, end of expansion arc
-    z_6 = params.R_5 * math.cos(t_5)
+    z_5 = params.R_5 * math.cos(t_5)
 
     # === Nozzle straight section (during curve 5-6) ===
     # L_n: nozzle length from throat (r_t) to exit (r_e), forming final conical section
     L_n = (params.R_e - params.R_t) / math.tan(math.radians(params.nozzle_angle))
 
     # Return full geometry profile encapsulated in Sizing dataclass
-    return Sizing(t_4, z_4, r_4, r_3, z_3, t_3, z_2, R_2, r_2, t_5, r_6, z_6, L_n)
+    return Sizing(
+        params.L_c,
+        params.R_t,
+        params.R_c,
+        params.R_e,
+        t_4,
+        z_4,
+        r_4,
+        r_3,
+        z_3,
+        t_3,
+        z_2,
+        R_2,
+        r_2,
+        params.R_4,
+        params.R_5,
+        t_5,
+        r_5,
+        z_5,
+        L_n,
+        params.nozzle_angle,
+        params.wall_thickness,
+    )
+
+
+class Line:
+    x1: float
+    y1: float
+    x2: float
+    y2: float
+
+    def __init__(self, x1: float, y1: float, x2: float, y2: float):
+        self.x1 = x1
+        self.y1 = y1
+        self.x2 = x2
+        self.y2 = y2
+
+    def offset(self, dx: float, dy: float):
+        self.x1 += dx
+        self.y1 += dy
+        self.x2 += dx
+        self.y2 += dy
+
+
+class ParametricCircle:
+    h: float
+    k: float
+    r: float
+
+    def __init__(self, h: float, k: float, r: float):
+        self.h = h
+        self.k = k
+        self.r = r
+
+    def get_point(self, t: float) -> tuple[float, float]:
+        x = self.h + self.r * math.cos(t)
+        y = self.k + self.r * math.sin(t)
+        return x, y
+
+
+def circle_line_intersection(
+    circle: ParametricCircle, line: Line, tol=1e-2
+) -> list[tuple[float, float]]:
+    # Solve using parametric substitution
+    c = np.array([circle.h, circle.k])
+    a = np.array([line.x1, line.y1])
+    b = np.array([line.x2, line.y2]) - a
+
+    # Quadratic coefficients
+    A = np.dot(b, b)
+    B = 2 * np.dot(b, a - c)
+    C = np.dot(a - c, a - c) - circle.r**2
+
+    descriminant = B**2 - 4 * A * C
+    if descriminant < -tol:
+        return []
+    elif abs(descriminant) < tol:
+        t = -B / (2 * A)
+        x_y = a + b * t
+        return [tuple(x_y)]
+    else:
+        result = []
+        for op in [-1, 1]:
+            t = (-B + op * np.sqrt(descriminant)) / (2 * A)
+            intersecting_pt = a + b * t
+            result.append(tuple(intersecting_pt))
+        return result
+
+
+def cad(sizing: Sizing) -> cq.Assembly:
+    """
+    Create the CAD model of the rocket nozzle using the provided sizing parameters.
+
+    Args:
+        sizing (Sizing): The sizing parameters for the nozzle.
+
+    Returns:
+        cq.Assembly: The CAD assembly of the nozzle.
+    """
+    inner_intersections = circle_line_intersection(
+        ParametricCircle(sizing.z_2, sizing.r_2, sizing.R_2),
+        Line(-999, sizing.R_c, 999, sizing.R_c),
+    )
+    if len(inner_intersections) == 0:
+        raise ValueError("No intersection between inner R1 and Chamber Line found")
+    # Choose the leftmost intersection point. This is the point in which R1 intersects with the combustion chamber.
+    inner_leftmost_intersection = min(inner_intersections, key=lambda pt: pt[0])
+
+    nozzle_end_z = (sizing.R_e - sizing.R_t) / math.tan(
+        math.radians(sizing.nozzle_angle)
+    )
+
+    outer_intersections = circle_line_intersection(
+        ParametricCircle(sizing.z_2, sizing.r_2 + sizing.wall_thickness, sizing.R_2),
+        Line(
+            -999,
+            sizing.R_c + sizing.wall_thickness,
+            999,
+            sizing.R_c + sizing.wall_thickness,
+        ),
+    )
+    if len(outer_intersections) == 0:
+        raise ValueError("No intersection between outer R1 and Chamber Line found")
+    # Choose the leftmost intersection point. This is the point in which R1 intersects with the combustion chamber.
+    outer_leftmost_intersection = min(outer_intersections, key=lambda pt: pt[0])
+
+    profile = (
+        cq.Workplane("XY")
+        # Move to leftmost point of the combustion chamber.
+        .moveTo(-sizing.L_c, sizing.R_c)
+        # Chamber outer wall line to start of initial contraction arc.
+        .lineTo(inner_leftmost_intersection[0], inner_leftmost_intersection[1])
+        # Inner contraction arc.
+        .radiusArc((sizing.z_3, sizing.r_3), sizing.R_2)
+        # Contraction Line from left, inner contraction arc to contraction arc before throat.
+        .lineTo(sizing.z_4, sizing.r_4)
+        # Arc from contraction line to throat
+        .radiusArc((0, sizing.R_t), -sizing.R_4)
+        # Arc from throat to nozzle line.
+        .radiusArc((sizing.z_5, sizing.r_5), -sizing.R_5)
+        # Nozzle line from throat to end of nozzle.
+        .lineTo(nozzle_end_z, sizing.R_e)
+        # We're now at the end of the inner nozzle wall.
+        # Up to end of outer nozzle wall
+        .lineTo(nozzle_end_z, sizing.R_e + sizing.wall_thickness)
+        # Nozzle outer wall line
+        .lineTo(sizing.z_5, sizing.r_5 + sizing.wall_thickness)
+        # Arc from nozzle outer wall to throat
+        .radiusArc((0, sizing.R_t + sizing.wall_thickness), sizing.R_5)
+        # Arc from throat to contraction line
+        .radiusArc((sizing.z_4, sizing.r_4 + sizing.wall_thickness), sizing.R_4)
+        # Line to initial contraction arc
+        .lineTo(sizing.z_3, sizing.r_3 + sizing.wall_thickness)
+        # Arc from contraction line to chamber outer wall
+        .radiusArc(
+            (outer_leftmost_intersection[0], outer_leftmost_intersection[1]),
+            -sizing.R_2,
+        )
+        # Outer chamber wall line
+        .lineTo(-sizing.L_c, sizing.R_c + sizing.wall_thickness)
+        # Back to leftmost point of the combustion chamber.
+        .close()
+    )
+
+    # Revolve around X axis
+    solid = profile.revolve(360, axisStart=(-999, 0, 0), axisEnd=(999, 0, 0))
+    assembly = cq.Assembly()
+    assembly.add(solid, color=cq.Color(0.5, 0.5, 0.5))  # gray solid
+
+    # Show object
+    show_object(assembly)
+    return assembly
 
 
 def main():
-    # Initial geometry (pre-wall-thickness)
     base_params = Parameters(
-        R_c=3.530950365 / 2,
-        R_t=1.248379473 / 2,
-        R_e=2.301477106 / 2,
+        R_c=5.61770763 / 2 * 10,
+        R_t=1.248379473 / 2 * 10,
+        R_e=2.301477106 / 2 * 10,
         Lvp=1 / 3,
-        contraction_ratio=8,
-        contract_angle=30,
+        contraction_diameter_ratio=4,
+        contract_angle=70,
         nozzle_angle=15,
+        L_c=5.836139169 * 10,
+        wall_thickness=1,
     )
 
     print("=== Base Parameters ===")
     print(base_params)
-    print("\n=== Base Sizing ===")
-    print(calculate_sizing(base_params))
+    print("\n=== Sizing ===")
+    sizing = calculate_sizing(base_params)
+    print(sizing)
 
-    # Adjust for wall thickness
-    base_params.apply_wall_thickness(WALL_THICKNESS)
-
-    print("\n-------------------------------------")
-    print("=== With Wall Thickness Applied ===")
-    print(base_params)
-    print("\n=== Sizing After Wall Thickness ===")
-    print(calculate_sizing(base_params))
+    asm = cad(sizing)
+    asm.export(
+        "rao_sizing.step",
+    )
+    print("Exported to rao_sizing.step")
 
 
-if __name__ == "__main__":
-    main()
+main()
