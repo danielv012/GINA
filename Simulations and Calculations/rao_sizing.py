@@ -1,6 +1,9 @@
 """
 This script generates a STEP file of Rao's nozzle using given parameters.
 Parameters should be in millimeters.
+
+Install https://github.com/CadQuery/CQ-editor to view the generated model.
+Or just run the script and open rao_sizing.step in your CAD software of choice.
 """
 
 import numpy as np
