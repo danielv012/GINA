@@ -1,3 +1,13 @@
+/**
+ * @file main.cpp
+ * @author Daniel Vayman (daniel@vayman.co)
+ * @brief Firmware for the ESP32 MCU for GINA's test stand.
+ * @version 1.0
+ * @date 2025-05-20
+ *
+ * @copyright Copyright (c) 2025
+ *
+ */
 #include "HX711.h"
 #include "transducer.h"
 #include <Arduino.h>
@@ -81,9 +91,11 @@ double fuel_pressure_sum = 0.0;
 double ox_pressure_sum = 0.0;
 int last_load_reading = 0;
 
+// Telemtry writing interval.
 unsigned long lastDataSendTime = 0;
 const unsigned long dataSendInterval = 666;
 
+// Ignition parameters.
 const unsigned long fire_length = 5000;
 unsigned long ignition_time = 0;
 bool firing = false;
@@ -101,7 +113,7 @@ void setup()
     tare_ox_pressure = tarePressure(OX_PTD_INDEX);
 
     load_cell.begin(DT_PIN, SCK_PIN);
-    // Tare load cell.
+    // Tare load cell. NOTE: Values found manually and hardcoded.
     load_cell.set_scale(33.1656583);
     load_cell.set_offset(-163065.0);
     load_cell.tare();
@@ -141,7 +153,6 @@ void loop()
     // Sending telemetry every 300ms. Calculates averages.
     if (currentTime - lastDataSendTime >= dataSendInterval)
     {
-
         float avg_fuel_pressure = fuel_pressure_sum / (float)pressure_count;
         float avg_ox_pressure = ox_pressure_sum / (float)pressure_count;
 
@@ -176,7 +187,7 @@ void loop()
         lastDataSendTime = millis();
     }
 
-    // IGNITION.
+    // IGNITION. NOTE: make this blocking so nothing else holds ignition_stop.
     if (firing)
     {
         currentTime = millis();
@@ -248,8 +259,7 @@ void servo_set(int index, int angle)
     init_servo(index);
     target_servo->write(angle);
     // After a delay, attach so not draining power.
-    log(OKAY,
-        "Writing angle " + String(angle) + " to servo " + String(index) + ".");
+    log(OKAY, "Writing angle " + String(angle) + " to servo " + String(index) + ".");
 }
 
 void decodeCommand(String command)
@@ -299,7 +309,7 @@ void open_all_valves()
 void ignition_start()
 {
     digitalWrite(RELAY_PIN, HIGH);
-    delay(500);
+    delay(1000);
     decode_valve_command("V3:OPEN");
     decode_valve_command("V4:OPEN");
     ignition_time = millis();
