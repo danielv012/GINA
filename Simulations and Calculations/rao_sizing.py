@@ -29,7 +29,6 @@ class Parameters:
         Lvp: float  # Vertical point length (0 < Lvp < 1)
         Note: Lvp is the amount of the chamber radius you want the contraction line to take up.
         contract_angle: float  # Degrees
-        nozzle_angle: float  # Degrees
         R_e: float  # Exit radius
         L_c: float  # Chamber length. This includes the contraction area (from the start of the chamber to the throat).
         wall_thickness: float  # Wall thickness of the nozzle
@@ -39,7 +38,8 @@ class Parameters:
     R_t: float  # Throat radius
     Lvp: float  #  Vertical point length (0 < Lvp < 1)
     contract_angle: float  # Degrees
-    nozzle_angle: float  # Degrees
+    divergent_angle: float  # Degrees (aka \theta_n)
+    exit_angle: float  # Degrees (aka \theta_e)
     R_e: float  # Exit radius
     L_c: float  # Chamber length. This includes the contraction area (from the start of the chamber to the throat).
     wall_thickness: float  # Wall thickness of the nozzle
@@ -55,7 +55,7 @@ class Parameters:
     def __str__(self):
         return (
             f"R_c: {self.R_c:.4f}\nR_t: {self.R_t:.4f}\nR_e: {self.R_e:.4f}\nLvp: {self.Lvp:.4f}\n"
-            f"contract_angle: {self.contract_angle}°\nnozzle_angle: {self.nozzle_angle}°\n"
+            f"contract_angle: {self.contract_angle}°\ndivergent angle: {self.divergent_angle}°\n"
             f"R_4: {self.R_4:.4f}\nR_5: {self.R_5:.4f}"
         )
 
@@ -84,8 +84,9 @@ class Sizing:
     t_5: float
     r_5: float
     z_5: float
-    L_n: float
-    nozzle_angle: float
+    divergent_angle: float  # Degrees (aka \theta_n)
+    exit_angle: float  # Degrees (aka \theta_e)
+    bell_nozzle_curve: list[tuple[float, float]]
     wall_thickness: float
 
     def __str__(self):
@@ -94,8 +95,76 @@ class Sizing:
             f"r_3: {self.r_3:.4f}\nz_3: {self.z_3:.4f}\nt_3: {math.degrees(self.t_3):.2f}°\n"
             f"z_2: {self.z_2:.4f}\nR_2: {self.R_2:.4f}\nr_2: {self.r_2:.4f}\n"
             f"t_5: {math.degrees(self.t_5):.2f}°\nr_6: {self.r_5:.4f}\nz_6: {self.z_5:.4f}\n"
-            f"L_n: {self.L_n:.4f}"
         )
+
+
+def rao_bell_nozzle(
+    start_z, start_r, bell_length, theta_n_deg, theta_e_deg, num_points=100
+):
+    theta_n = np.radians(theta_n_deg)
+    theta_e = np.radians(theta_e_deg)
+
+    # Discretize z
+    z = np.linspace(0, bell_length, num_points)
+    z[0] = start_z
+    r = np.zeros_like(z)
+    r[0] = start_r
+
+    # Wall angle function
+    theta = theta_e + (theta_n - theta_e) * np.cos(np.pi * z / (2 * bell_length)) ** 2
+
+    # Euler integration
+    for i in range(1, len(z)):
+        dz = z[i] - z[i - 1]
+        r[i] = r[i - 1] + dz * np.tan(theta[i - 1])
+
+    return z, r
+
+
+def solve_Ln_iterative(
+    start_z,
+    start_r,
+    theta_n_deg,
+    theta_e_deg,
+    target_R_e,
+    L_guess=None,
+    lr=0.8,
+    tol=1e-6,
+    maxiter=10000,
+):
+    """
+    Solve for bell length L_n such that integrated Rao nozzle reaches target_R_e.
+    Uses simple gradient descent / secant-style iteration.
+    """
+    if L_guess is None:
+        # initial guess: linear cone length
+        L = (target_R_e - start_r) / max(1e-6, math.tan(math.radians(theta_e_deg)))
+    else:
+        L = L_guess
+
+    for _ in range(maxiter):
+        z, r = rao_bell_nozzle(start_z, start_r, L, theta_n_deg, theta_e_deg)
+        err = r[-1] - target_R_e
+
+        if abs(err) < tol:
+            return L, z, r  # converged
+
+        # estimate derivative (numerical)
+        dL = 1e-4 * L  # small perturbation
+        _, r_perturb = rao_bell_nozzle(
+            start_z, start_r, L + dL, theta_n_deg, theta_e_deg
+        )
+        grad = (r_perturb[-1] - r[-1]) / dL
+
+        if grad == 0:
+            grad = 1e-6  # prevent div by zero
+
+        # update L using simple gradient step
+        L -= lr * err / grad
+
+    # if not converged, return last attempt
+    z, r = rao_bell_nozzle(start_z, start_r, L, theta_n_deg, theta_e_deg)
+    return L, z, r
 
 
 def calculate_sizing(params: Parameters) -> Sizing:
@@ -127,15 +196,18 @@ def calculate_sizing(params: Parameters) -> Sizing:
 
     # === Expansion arc after throat (Point 5 to Point 6) ===
     # t_5: tangent angle at point 5, start of diverging nozzle arc
-    t_5 = math.atan(-1 / math.tan(math.radians(params.nozzle_angle)))
+    t_5 = math.atan(-1 / math.tan(math.radians(params.divergent_angle)))
     # r_6: radial position of point 6, end of expansion arc
     r_5 = params.R_5 * math.sin(t_5) + params.R_t + params.R_5
     # z_6: axial position of point 6, end of expansion arc
     z_5 = params.R_5 * math.cos(t_5)
 
     # === Nozzle straight section (during curve 5-6) ===
-    # L_n: nozzle length from throat (r_t) to exit (r_e), forming final conical section
-    L_n = (params.R_e - params.R_t) / math.tan(math.radians(params.nozzle_angle))
+    # L_n: bell length from throat (r_t) to exit (r_e), forming final nozzle section
+    _, z, r = solve_Ln_iterative(
+        z_5, r_5, params.divergent_angle, params.exit_angle, params.R_e
+    )
+    print(z, r)
 
     # Return full geometry profile encapsulated in Sizing dataclass
     return Sizing(
@@ -157,8 +229,9 @@ def calculate_sizing(params: Parameters) -> Sizing:
         t_5,
         r_5,
         z_5,
-        L_n,
-        params.nozzle_angle,
+        params.divergent_angle,
+        params.exit_angle,
+        list(zip(z, r)),
         params.wall_thickness,
     )
 
@@ -246,10 +319,6 @@ def cad(sizing: Sizing) -> cq.Assembly:
     # Choose the leftmost intersection point. This is the point in which R1 intersects with the combustion chamber.
     inner_leftmost_intersection = min(inner_intersections, key=lambda pt: pt[0])
 
-    nozzle_end_z = (sizing.R_e - sizing.R_t) / math.tan(
-        math.radians(sizing.nozzle_angle)
-    )
-
     outer_intersections = circle_line_intersection(
         ParametricCircle(sizing.z_2, sizing.r_2 + sizing.wall_thickness, sizing.R_2),
         Line(
@@ -266,7 +335,7 @@ def cad(sizing: Sizing) -> cq.Assembly:
 
     profile = (
         cq.Workplane("XY")
-        # Move to leftmost point of the combustion chamber.
+        # Move to top leftmost point of the combustion chamber.
         .moveTo(-sizing.L_c, sizing.R_c)
         # Chamber outer wall line to start of initial contraction arc.
         .lineTo(inner_leftmost_intersection[0], inner_leftmost_intersection[1])
@@ -278,13 +347,24 @@ def cad(sizing: Sizing) -> cq.Assembly:
         .radiusArc((0, sizing.R_t), -sizing.R_4)
         # Arc from throat to nozzle line.
         .radiusArc((sizing.z_5, sizing.r_5), -sizing.R_5)
-        # Nozzle line from throat to end of nozzle.
-        .lineTo(nozzle_end_z, sizing.R_e)
-        # We're now at the end of the inner nozzle wall.
-        # Up to end of outer nozzle wall
-        .lineTo(nozzle_end_z, sizing.R_e + sizing.wall_thickness)
-        # Nozzle outer wall line
-        .lineTo(sizing.z_5, sizing.r_5 + sizing.wall_thickness)
+    )
+
+    # Draw inner bell curve,
+    for zi, ri in sizing.bell_nozzle_curve[1:]:
+        profile = profile.lineTo(zi, ri)
+
+    # Draw a line up from last point on inner wall to top right of outer wall
+    profile = profile.lineTo(
+        sizing.bell_nozzle_curve[-1][0],
+        sizing.bell_nozzle_curve[-1][1] + sizing.wall_thickness,
+    )
+
+    # Draw backwards for the outer wall
+    for zi, ri in list(reversed(sizing.bell_nozzle_curve))[1:]:
+        profile = profile.lineTo(zi, ri + sizing.wall_thickness)
+
+    profile = (
+        profile
         # Arc from nozzle outer wall to throat
         .radiusArc((0, sizing.R_t + sizing.wall_thickness), sizing.R_5)
         # Arc from throat to contraction line
@@ -314,14 +394,15 @@ def cad(sizing: Sizing) -> cq.Assembly:
 
 def main():
     base_params = Parameters(
-        R_c=5.61770763 / 2 * 10,
+        R_c=3.530950365 / 2 * 10,
         R_t=1.248379473 / 2 * 10,
         R_e=2.301477106 / 2 * 10,
         Lvp=1 / 3,
-        contract_angle=70,
-        nozzle_angle=15,
-        L_c=5.836139169 * 10,
-        wall_thickness=1,
+        contract_angle=30,
+        divergent_angle=33,
+        exit_angle=7,
+        L_c=14.77272727 * 10,
+        wall_thickness=3,
     )
 
     print("=== Base Parameters ===")
