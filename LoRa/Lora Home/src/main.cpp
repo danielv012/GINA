@@ -1,9 +1,9 @@
 /**
  * @file main.cpp
  * @author Daniel Vayman (daniel@vayman.co)
- * @brief Code for home LoRa board.
- * @version 0.1
- * @date 2025-04-29
+ * @brief Code for home LoRa board (connected to Macbook Pro)
+ * @version 1.0
+ * @date 2025-05-20
  *
  * @copyright Copyright (c) 2025
  *
@@ -23,12 +23,7 @@ void processPacket(String packet);
 String formatCommand(String command);
 void transmit(String packet);
 
-// SX1262 has the following connections:
-// NSS pin:   10
-// DIO1 pin:  2
-// NRST pin:  3
-// BUSY pin:  9
-
+// Header for radio packets.
 constexpr const char *PACKET_ID = "DC=";
 constexpr const int PACKET_ID_LENGTH = 3;
 
@@ -53,7 +48,7 @@ static volatile bool received_flag;
 bool transmitting_flag = false;
 
 /**
- * @brief Stupid function. available() should work.
+ * @brief Stupid function that we need. radio.available() should work. I love broken libraries.
  *
  */
 void set_flag(void)
@@ -78,7 +73,7 @@ void setup()
         radio.setFrequency(915.0);
 
         Serial.println(F("Success!"));
-        // Set LED pin as output
+        // Set LED pin as output to signal radio health.
         pinMode(LED_PIN, OUTPUT);
         digitalWrite(LED_PIN, HIGH);
     }
@@ -88,10 +83,11 @@ void setup()
         Serial.println(state);
         while (true)
         {
-            delay(10);
+            delay(10); // Holds Lora board in idle.
         }
     }
 
+    // Sets callback.
     radio.setPacketReceivedAction(set_flag);
 
     // Non-blocking. Will automatically fill packet if received. Overwrites
@@ -120,7 +116,7 @@ void loop()
         }
     }
 
-    // If serial was written by control panel.
+    // If serial was written by control panel UI.
     if (Serial.available())
     {
         // Get serial command. NOTE: Must end with '\n'.
@@ -137,11 +133,11 @@ void loop()
         }
     }
 
-    now = millis();
-    // If transmitting
+    now = millis(); // Accurate time.
     if (transmitting)
     {
-        if (now - last_transmission_time >= transmission_interval) // Only transmits commands every X milliseconds.
+        // Only transmits *commands* every X milliseconds.
+        if (now - last_transmission_time >= transmission_interval)
         {
             String packet = formatCommand(current_command);
             transmit(packet);
@@ -150,7 +146,8 @@ void loop()
     }
     else
     {
-        if (now - last_transmission_time >= ping_interval) // Only transmits pings ever second.
+        // Only transmits *pings* ever second.
+        if (now - last_transmission_time >= ping_interval)
         {
             String packet = String(PACKET_ID) + "PING\n";
             transmit(packet);
@@ -215,7 +212,7 @@ void processPacket(String packet)
     {
         Serial.println(message);
     }
-    else
+    else // Just prints all messages to control panel for now.
     {
         Serial.println(message);
     }

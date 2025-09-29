@@ -1,3 +1,14 @@
+/**
+ * @file main.cpp
+ * @author Daniel Vayman (daniel@vayman.co)
+ * @brief Firmware for Lora Away (Radio receiver board conneced to ESP32 MCU)
+ * @version 1.0
+ * @date 2025-05-20
+ *
+ * @copyright Copyright (c) 2025
+ *
+ */
+
 #include <Arduino.h>
 #include <heltec_unofficial.h>
 
@@ -6,10 +17,11 @@ void sendCommand(String);
 void transmit(String);
 void processPacket(String packet);
 
+// Radio packet header.
 constexpr const char *PACKET_ID = "DC=";
 constexpr const int PACKET_ID_LENGTH = 3;
 
-// Reception
+// Reception.
 unsigned long last_reception_time = 0; // Last reception time.
 const unsigned long ping_timer = 8000; // Ping timer (how long to wait before closing valves)
 
@@ -20,7 +32,7 @@ static volatile bool received_flag;
 bool transmitting = false;
 
 /**
- * @brief Stupid function. available() should work.
+ * @brief Stupid function that's needed. radio.available() should work.
  *
  */
 void set_flag(void)
@@ -62,6 +74,7 @@ void setup()
         }
     }
 
+    // Initializing callback.
     radio.setPacketReceivedAction(set_flag);
 
     // Non-blocking. Will automatically fill packet if received. Overwrites
@@ -172,13 +185,13 @@ void processPacket(String packet)
  */
 void sendCommand(String command)
 {
-    // Writes and adds a newline.
+    // Writes and adds a newline. NOTE: Serial2 is wired TX/RX.
     Serial2.println(command);
     Serial.println("Wrote " + command + " to serial2.");
 }
 
 /**
- * @brief Transmits message.
+ * @brief Transmits radio message.
  *
  * @param message
  */

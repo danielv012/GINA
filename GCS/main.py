@@ -1,6 +1,7 @@
 import sys
-import json
+import time
 import serial
+from datetime import datetime
 from PyQt6.QtWidgets import (
     QApplication,
     QWidget,
@@ -29,6 +30,20 @@ from ui import (
 )
 from serial_monitor import SerialMonitor
 from utils import g_to_N
+
+LOG_FILE = open("logs/log.txt", "a")
+
+
+def write_log(msg: str):
+    utc_datetime = datetime.now()
+    utc_string = utc_datetime.strftime("%Y-%m-%dT%H:%M:%S.%fZ")
+    if msg[-1] != "\n":
+        msg += "\n"
+    LOG_FILE.write(f"[{utc_string}]: {msg}")
+    LOG_FILE.flush()
+
+
+write_log("REOPENED GCS\n")
 
 COLOR_PALETTE = QPalette()
 COLOR_PALETTE.setColor(QPalette.ColorRole.Window, QColor(0, 0, 0))
@@ -65,7 +80,7 @@ class ControlPanel(QWidget):
         super().__init__()
         self.serial_connection = serial.Serial()
         self.serial_monitor_thread = None
-        self.serial_port_path = "/dev/tty.usbserial-0001"
+        self.serial_port_path = "/dev/tty.usbserial-0001"  # Hardcoded.
         self.serial_baudrate = "115200"
 
         self.initUI()
@@ -282,6 +297,7 @@ class ControlPanel(QWidget):
             self.serial_terminal.append("Not connected.")
 
     def displaySerialData(self, data: str):
+        write_log(data)
         if data.startswith("T"):
             psi_fuel, psi_ox, load = [d.strip() for d in data[1:].split(",")]
             self.pressure_graph.update(int(psi_fuel), int(psi_ox))
